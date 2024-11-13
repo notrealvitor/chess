@@ -47,22 +47,24 @@ public class UI {
         }
     }
 
-    public static void printMatch(ChessMatch chessMatch, List<ChessPiece> captured){
-        printBoard(chessMatch.getPieces());
-        System.out.println();
+    public static void printMatch(ChessMatch chessMatch, List<ChessPiece> captured) {
         printCapturedPieces(captured);
         System.out.println();
-        System.out.println("Turn: " + chessMatch.getTurn());
-        
-        if(!chessMatch.isCheckMate()){
-            System.out.println("Waiting player: " + chessMatch.getCurrentPlayer().getDescription());
-            if(chessMatch.isCheck()) {
+
+        if (!chessMatch.isCheckMate()) {
+            System.out.println("Turn: " + chessMatch.getTurn() + " | Waiting player: " + chessMatch.getCurrentPlayer().getDescription().toUpperCase());
+            System.out.println();
+            if (chessMatch.isCheck()) {
                 System.out.println("CHECK!");
-            }   
+            }
         } else {
             System.out.println("CHECKMATE!");
-            System.out.println("Winner: " + chessMatch.getCurrentPlayer().getDescription());
-        }           
+            System.out.println("Winner: " + chessMatch.getCurrentPlayer().getDescription().toUpperCase());
+        }
+
+        printBoard(chessMatch.getPieces()); // Find better to visualize to show the board after the statuses
+        System.out.println();
+
     }
     
     public static void printBoard(ChessPiece[][] pieces) {
@@ -103,15 +105,15 @@ public class UI {
         List<ChessPiece> white = captured.stream().filter(x -> x.getColor() == Color.WHITE).collect(Collectors.toList());
         List<ChessPiece> black = captured.stream().filter(x -> x.getColor() == Color.BLACK).collect(Collectors.toList());
         
-        System.out.println("Captured pieces:");
-        System.out.print("White: ");
+        System.out.print("Captured pieces:");
+        System.out.print(" WHITE");
         System.out.print(ANSI_WHITE);
-        System.out.println(Arrays.toString(white.toArray()));
+        System.out.print(Arrays.toString(white.toArray()));
         System.out.print(ANSI_RESET);
         
-        System.out.print("Black: ");
+        System.out.print(" | BLACK");
         System.out.print(ANSI_YELLOW);
-        System.out.println(Arrays.toString(black.toArray()));
+        System.out.print(Arrays.toString(black.toArray()));
         System.out.print(ANSI_RESET);
         
     }
