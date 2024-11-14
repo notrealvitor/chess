@@ -117,4 +117,15 @@ public class UI {
         System.out.print(ANSI_RESET);
         
     }
+
+    public static ChessPosition clickChessPosition(String input) {
+        try {
+            char column = input.toLowerCase().charAt(0);
+            int row = Integer.parseInt(input.substring(1));
+            return new ChessPosition(column, row);
+        } catch (RuntimeException e) {
+            throw new InputMismatchException("Error reading clicked ChessPosition. Valid values are from a1 to h8.");
+        }
+    }
+
 }
