@@ -4,6 +4,11 @@ import chess.ChessMatch;
 import chess.ChessPiece;
 import chess.ChessPosition;
 import exceptions.ChessException;
+
+import java.io.IOException;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.InputMismatchException;
 import java.util.List;
@@ -16,88 +21,117 @@ import java.util.concurrent.TimeUnit;
  * @author joana
  */
 public class Main {
+    private static PipedInputStream pipedInput;
+    private static PipedOutputStream pipedOutput;
+    private static Scanner injectedScanner;
+    private static Scanner consoleScanner;
+    private static boolean useInjectedInput = false; // Flag to switch input
 
-    /**
-     * @param args the command line arguments
-     */
     public static void main(String[] args) {
-
-        // Latch to wait until JavaFX UI is ready
-        CountDownLatch latch = new CountDownLatch(1);
-
-        new Thread(() -> {
-            JavaFX_UI.setInitLatch(latch);
-            JavaFX_UI.main(args); // Launch JavaFX UI
-        }).start();
-
         try {
-            // Wait for JavaFX to finish initializing
-            if (!latch.await(5, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("JavaFX UI initialization timeout");
-            }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } // Launch JavaFX in a separate thread so the console do not freeze
+            pipedInput = new PipedInputStream();
+            pipedOutput = new PipedOutputStream(pipedInput);
+            injectedScanner = new Scanner(pipedInput);
+            consoleScanner = new Scanner(System.in);
+            PrintWriter inputInjector = new PrintWriter(pipedOutput, true);
 
+            CountDownLatch latch = new CountDownLatch(1);
+            new Thread(() -> {
+                JavaFX_UI.setInitLatch(latch);
+                JavaFX_UI.setInputInjector(inputInjector);
+                JavaFX_UI.main(args);
+            }).start();
 
-        Scanner sc = new Scanner(System.in);
-        ChessMatch chessMatch = new ChessMatch();
-        List<ChessPiece> captured = new ArrayList<>();
+            latch.await();  // Wait for JavaFX initialization
 
-        while(!chessMatch.isCheckMate()) {
-            try {
-                UI.clearScreen();
-                UI.printMatch(chessMatch, captured);
+            ChessMatch chessMatch = new ChessMatch();
+            List<ChessPiece> captured = new ArrayList<>();
 
-                //System.out.println();
-                System.out.print("Waiting valid " + chessMatch.getCurrentPlayer().getDescription().toUpperCase() + " piece location(A1 to H8): \n ");
-                //System.out.print("Source: ");
-                System.out.flush(); // testing a bug fix for typing not appearing in cmd
-                ChessPosition source = UI.readChessPosition(sc);
+            while (!chessMatch.isCheckMate()) {
+                try {
+                    UI.clearScreen();
+                    UI.printMatch(chessMatch, captured);
 
-                // Update the JavaFX
-                javafx.application.Platform.runLater(() -> {
-                    JavaFX_UI.getInstance().updateChessBoard(chessMatch.getPieces());
-                });
+                    // Piece selection
+                    System.out.print("Waiting valid piece location (A1 to H8): ");
+                    ChessPosition source = waitForValidInput();
 
-                boolean[][] possibleMoves = chessMatch.possibleMoves(source);
-                UI.clearScreen();
-                UI.printBoard(chessMatch.getPieces(), possibleMoves);
-                
-                //System.out.println();
-                System.out.print("Waiting valid destination for your piece(A1 to H8): \n ");
-                //System.out.print("Target: ");
-                ChessPosition target = UI.readChessPosition(sc);
-                System.out.println();
+                    boolean[][] possibleMoves = chessMatch.possibleMoves(source);
+                    UI.printBoard(chessMatch.getPieces(), possibleMoves);
 
-                ChessPiece capturedPiece = chessMatch.performChessMove(source, target);
+                    // **Highlight valid moves on JavaFX board**
+                    javafx.application.Platform.runLater(() -> JavaFX_UI.getInstance().updateChessBoard(chessMatch.getPieces(), possibleMoves));
 
-                // Update the JavaFX Board
-                javafx.application.Platform.runLater(() -> {
-                    JavaFX_UI.getInstance().updateChessBoard(chessMatch.getPieces());
-                });
+                    // Target selection
+                    System.out.print("Waiting valid destination (A1 to H8): ");
+                    ChessPosition target = waitForValidInput();
 
-                if(capturedPiece != null) 
-                    captured.add(capturedPiece);
-                
-                if(chessMatch.getPromoted() != null){
-                    System.out.print("Enter piece for promotion (B/N/R/Q): ");
-                    String type = sc.nextLine().toUpperCase();
-                    
-                    while(!type.equals("B") && !type.equals("N") && !type.equals("R") && !type.equals("Q")){
-                        System.out.print("Invalid value! Enter piece for promotion (B/N/R/Q): ");
-                        type = sc.nextLine().toUpperCase();
+                    ChessPiece capturedPiece = chessMatch.performChessMove(source, target);
+                    if (capturedPiece != null) captured.add(capturedPiece);
+
+                    if (chessMatch.getPromoted() != null) {
+                        System.out.print("Enter piece for promotion (B/N/R/Q): ");
+                        String type = consoleScanner.nextLine().toUpperCase();
+                        chessMatch.replacePromotedPiece(type);
                     }
-                    
-                    chessMatch.replacePromotedPiece(type);
+
+                    // **Update JavaFX chessboard after the move**
+                    javafx.application.Platform.runLater(() -> JavaFX_UI.getInstance().updateChessBoard(chessMatch.getPieces()));
+
+                } catch (ChessException | InputMismatchException e) {
+                    System.out.println(e.getMessage());
+                    clearCurrentInput();  // Clear invalid input
                 }
-                
-            } catch (ChessException | InputMismatchException e) {
-                System.out.println(e.getMessage());
-                sc.nextLine();
+            }
+
+            UI.printMatch(chessMatch, captured);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static ChessPosition waitForValidInput() {
+        ChessPosition position = null;
+        while (position == null) {
+            position = getDynamicInput();
+            try {
+                Thread.sleep(10);  // Prevent busy-waiting
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
-        UI.clearScreen();
-        UI.printMatch(chessMatch, captured);
+        return position;
+    }
+
+    private static ChessPosition getDynamicInput() {
+        try {
+            if (useInjectedInput && injectedScanner.hasNextLine()) {
+               // System.out.println("Reading injected input...");
+                String injected = injectedScanner.nextLine();
+                System.out.println("Injected input received: " + injected);
+                AllowInjectedInput(false);
+                return UI.readChessPosition(new Scanner(injected));
+            } else if (!useInjectedInput && System.in.available() > 0) {
+                return UI.readChessPosition(consoleScanner);
+            }
+            return null;  // No input available yet
+        } catch (IOException e) {
+            throw new RuntimeException("Error checking input availability", e);
+        }
+    }
+
+
+    public static void AllowInjectedInput(boolean allowState) {
+        useInjectedInput = allowState;
+        //System.out.println("Injected input enabled: " + allowState);
+    }
+
+    private static void clearCurrentInput() {
+        if (useInjectedInput) {
+            injectedScanner.nextLine();  // Clear piped input
+        } else {
+            consoleScanner.nextLine();  // Clear console input
+        }
     }
 }

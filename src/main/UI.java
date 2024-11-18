@@ -38,14 +38,18 @@ public class UI {
 
     public static ChessPosition readChessPosition(Scanner sc) {
         try {
+
             String s = sc.nextLine();
             char column = s.toLowerCase().charAt(0);
             int row = Integer.parseInt(s.substring(1));
+            System.out.print("reading chess pos " + column + " and " + row);
             return new ChessPosition(column, row);
         } catch(RuntimeException e) {
             throw new InputMismatchException("Error reading ChessPosition. Valid values are from a1 to h8.");
         }
     }
+
+
 
     public static void printMatch(ChessMatch chessMatch, List<ChessPiece> captured) {
         printCapturedPieces(captured);
@@ -116,5 +120,17 @@ public class UI {
         System.out.print(Arrays.toString(black.toArray()));
         System.out.print(ANSI_RESET);
         
+    }
+
+    public static ChessPosition clickChessPosition(String clickedPosition) {
+        try {
+            // Parse the clicked position
+            char column = clickedPosition.toLowerCase().charAt(0); // Get column (e.g., 'a')
+            int row = Integer.parseInt(clickedPosition.substring(1)); // Get row (e.g., 1-8)
+
+            return new ChessPosition(column, row); // Return the ChessPosition
+        } catch (RuntimeException e) {
+            throw new InputMismatchException("Error reading ChessPosition. Valid values are from a1 to h8.");
+        }
     }
 }

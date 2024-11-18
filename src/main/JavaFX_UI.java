@@ -11,7 +11,15 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.control.Label;
+import javafx.scene.control.Button;
 
+import java.io.PrintWriter;
+import java.net.URL; // Needed for resource loading
+
+import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 
 
@@ -22,33 +30,94 @@ public class JavaFX_UI extends Application {
     private static JavaFX_UI instance; // Singleton instance
     private static CountDownLatch initLatch;
 
+    private HashMap<String, Label> footerLabels = new HashMap<>();
+    private HashMap<String, Image> pieceImages;
+    private static PrintWriter inputInjector;
+
     @Override
     public void start(Stage primaryStage) {
-        instance = this; // Set the singleton instance
-        if(initLatch!=null){  initLatch.countDown();    }
+        try {
+            instance = this;
+            chessMatch = new ChessMatch();
 
-        chessMatch = new ChessMatch(); // Initialize game logic
+            preloadPieceImages(); // avoid the textures being loaded everytime
 
-        BorderPane root = new BorderPane();
+            BorderPane root = new BorderPane();
 
-        // Add a MenuBar to the top
-        MenuBar menuBar = createMenuBar();
-        root.setTop(menuBar);
+            // Add a MenuBar to the top
+            MenuBar menuBar = createMenuBar();
+            root.setTop(menuBar);
 
-        // Create and configure the chessboard
-        gridPane = new GridPane();
-        updateChessBoard(chessMatch.getPieces());
-        root.setCenter(gridPane);
-        gridPane.setAlignment(Pos.TOP_CENTER);
+            // Create and configure the chessboard
+            gridPane = new GridPane();
+            updateChessBoard(chessMatch.getPieces());
+            root.setCenter(gridPane);
+            gridPane.setAlignment(Pos.TOP_CENTER);
 
-        Scene scene = new Scene(root, 600, 650);
-        primaryStage.setTitle("Chess Game");
-        primaryStage.setScene(scene);
-        primaryStage.show();
+            // Create and add the footer
+            VBox footer = createFooter();
+            root.setBottom(footer);
+
+            Scene scene = new Scene(root, 600, 700);  // Adjust height to fit footer
+            primaryStage.setTitle("Chess Game");
+            primaryStage.setScene(scene);
+            primaryStage.show();
+        }finally
+        {
+            if (initLatch != null) {
+                initLatch.countDown(); // Signal readiness
+            }
+        }
+
     }
 
     // Update the chessboard dynamically
+    private VBox createFooter() {
+        VBox footer = new VBox();
+        footer.setAlignment(Pos.CENTER);
+        footer.setSpacing(10);
+
+        Label currentPlayerLabel = new Label("Current Player: " + chessMatch.getCurrentPlayer().getDescription().toUpperCase());
+        Label capturedPiecesLabel = new Label("Captured Pieces: None");
+
+        footer.getChildren().addAll(currentPlayerLabel, capturedPiecesLabel);
+
+        // Store labels for dynamic updates
+        footerLabels.put("currentPlayer", currentPlayerLabel);
+        footerLabels.put("capturedPieces", capturedPiecesLabel);
+
+        return footer;
+    }
+
+    private void preloadPieceImages() {
+        pieceImages = new HashMap<>();
+        String[] colors = {"white", "black"};
+        String[] pieces = {"k", "q", "r", "b", "n", "p"};
+
+        for (String color : colors) {
+            for (String piece : pieces) {
+                String pieceName = color + "-" + piece;
+                String imagePath = "/Textures/" + pieceName + ".png";
+
+                // Check if the resource exists
+                URL resourceUrl = getClass().getResource(imagePath);
+                if (resourceUrl == null) {
+                    System.err.println("Image not found: " + imagePath);
+                } else {
+                    //System.out.println("Loading image: " + resourceUrl.getPath());
+                    Image image = new Image(getClass().getResourceAsStream(imagePath));
+                    pieceImages.put(pieceName, image);
+                }
+            }
+        }
+    }
+
+    // chessboard without possible moves
     public void updateChessBoard(ChessPiece[][] pieces) {
+        updateChessBoard(pieces, null); // Call the method with `null` for possible moves
+    }
+    // Update the chessboard dynamically
+    public void updateChessBoard(ChessPiece[][] pieces, boolean[][] possibleMoves) {
         gridPane.getChildren().clear();
 
         for (int row = 0; row < pieces.length; row++) {
@@ -57,23 +126,35 @@ public class JavaFX_UI extends Application {
                 square.setPrefSize(60, 60);
 
                 ChessPiece piece = pieces[row][col];
-                square.setText(piece != null ? piece.toString() : "");
+                if (piece != null) {
+                    String pieceName = piece.getColor().toString().toLowerCase() + "-" + piece.toString().toLowerCase();
+                    Image image = pieceImages.get(pieceName);
+                    if (image != null) {
+                        ImageView imageView = new ImageView(image);
+                        imageView.setFitHeight(50);
+                        imageView.setFitWidth(50);
+                        square.setGraphic(imageView);
+                    }
+                }
 
-                if ((row + col) % 2 == 0) {
+                // Highlight valid moves
+                if (possibleMoves != null && possibleMoves[row][col]) {
+                    square.setStyle("-fx-background-color: lightblue;");
+                } else if ((row + col) % 2 == 0) {
                     square.setStyle("-fx-background-color: white;");
                 } else {
                     square.setStyle("-fx-background-color: gray;");
                 }
 
+                String squareID = (char) ('a' + col) + String.valueOf(8 - row);
+                square.setId(squareID);
                 gridPane.add(square, col, row);
 
-                // Add click handling for future logic
-                int currentRow = row;
-                int currentCol = col;
-                square.setOnAction(e -> handleSquareClick(currentRow, currentCol));
+                square.setOnAction(e -> handleSquareClick(squareID));
             }
         }
     }
+
 
     public ChessMatch getChessMatch() {
         return chessMatch;
@@ -113,18 +194,26 @@ public class JavaFX_UI extends Application {
         return menuBar;
     }
 
-    // Placeholder for handling square clicks
-    private void handleSquareClick(int row, int col) {
-        System.out.println("Square clicked: " + row + ", " + col);
-        // Placeholder: Add game move logic
+    private void handleSquareClick(String squareID) {
+        try {
+            Thread.sleep(100);
+            Main.AllowInjectedInput(true);
+            if (inputInjector != null) {
+                inputInjector.println(squareID);  // Inject input
+                inputInjector.flush();
+                //System.out.println("Injected input clicked: " + squareID);
+            }
+        } catch (Exception e) {
+            System.out.println("Error injecting input: " + e.getMessage());
+        }
     }
 
     public static void setInitLatch(CountDownLatch latch) {
         initLatch = latch;}
 
-//in start()
-
-
+    public static void setInputInjector(PrintWriter injector) {
+        inputInjector = injector;
+    }
 }
 
 
