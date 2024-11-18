@@ -9,6 +9,8 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
+
+import java.io.ByteArrayInputStream;
 import java.util.InputMismatchException;
 import javafx.stage.Stage;
 import exceptions.ChessException;
@@ -33,6 +35,11 @@ public class JavaFX_UI extends Application {
     private ChessPosition selectedSource = null;
 
     private HashMap<String, Label> footerLabels = new HashMap<>();
+    private HashMap<String, Image> pieceImages;
+
+    private GameLoop gameLoop; // Reference to the GameLoop
+    private boolean isSelectingSource = true; // Track whether the player is selecting a source or target
+    private boolean[][] validMoves = null; // Store valid moves for the selected piece
 
     private enum GameState {
         SELECT_PIECE,
@@ -40,30 +47,41 @@ public class JavaFX_UI extends Application {
     }
 
     @Override
-    public void start(Stage primaryStage) {
-        instance = this;
+    public void start(Stage primaryStage)
+    {
+        try {
+            instance = this;
+            chessMatch = new ChessMatch();
 
-        chessMatch = new ChessMatch();
-        BorderPane root = new BorderPane();
+            preloadPieceImages(); // avoid the textures being loaded everytime
 
-        // Add a MenuBar to the top
-        MenuBar menuBar = createMenuBar();
-        root.setTop(menuBar);
+            BorderPane root = new BorderPane();
 
-        // Create and configure the chessboard
-        gridPane = new GridPane();
-        updateChessBoard(chessMatch.getPieces());
-        root.setCenter(gridPane);
-        gridPane.setAlignment(Pos.TOP_CENTER);
+            // Add a MenuBar to the top
+            MenuBar menuBar = createMenuBar();
+            root.setTop(menuBar);
 
-        // Create and add the footer
-        VBox footer = createFooter();
-        root.setBottom(footer);
+            // Create and configure the chessboard
+            gridPane = new GridPane();
+            updateChessBoard(chessMatch.getPieces());
+            root.setCenter(gridPane);
+            gridPane.setAlignment(Pos.TOP_CENTER);
 
-        Scene scene = new Scene(root, 600, 700);  // Adjust height to fit footer
-        primaryStage.setTitle("Chess Game");
-        primaryStage.setScene(scene);
-        primaryStage.show();
+            // Create and add the footer
+            VBox footer = createFooter();
+            root.setBottom(footer);
+
+            Scene scene = new Scene(root, 600, 700);  // Adjust height to fit footer
+            primaryStage.setTitle("Chess Game");
+            primaryStage.setScene(scene);
+            primaryStage.show();
+        }finally
+        {
+                if (initLatch != null) {
+                    initLatch.countDown(); // Signal readiness
+                }
+        }
+
     }
 
     private VBox createFooter() {
@@ -83,45 +101,55 @@ public class JavaFX_UI extends Application {
         return footer;
     }
 
+    private void preloadPieceImages() {
+        pieceImages = new HashMap<>();
+        String[] colors = {"white", "black"};
+        String[] pieces = {"k", "q", "r", "b", "n", "p"};
+
+        for (String color : colors) {
+            for (String piece : pieces) {
+                String pieceName = color + "-" + piece;
+                String imagePath = "/Textures/" + pieceName + ".png";
+
+                // Check if the resource exists
+                URL resourceUrl = getClass().getResource(imagePath);
+                if (resourceUrl == null) {
+                    System.err.println("Image not found: " + imagePath);
+                } else {
+                    //System.out.println("Loading image: " + resourceUrl.getPath());
+                    Image image = new Image(getClass().getResourceAsStream(imagePath));
+                    pieceImages.put(pieceName, image);
+                }
+            }
+        }
+    }
+
     // chessboard without possible moves
     public void updateChessBoard(ChessPiece[][] pieces) {
         updateChessBoard(pieces, null); // Call the method with `null` for possible moves
     }
     // Update the chessboard dynamically
     public void updateChessBoard(ChessPiece[][] pieces, boolean[][] possibleMoves) {
-        gridPane.getChildren().clear();  // Clear the grid before updating
+        gridPane.getChildren().clear();
 
         for (int row = 0; row < pieces.length; row++) {
             for (int col = 0; col < pieces[row].length; col++) {
                 Button square = new Button();
-                square.setPrefSize(60, 60);  // Set button size
+                square.setPrefSize(60, 60);
 
                 ChessPiece piece = pieces[row][col];
                 if (piece != null) {
                     String pieceName = piece.getColor().toString().toLowerCase() + "-" + piece.toString().toLowerCase();
-                    String imagePath = "/Textures/" + pieceName + ".png";
-
-// Debugging: Get the absolute path of the resource
-                    URL resourceUrl = getClass().getResource(imagePath);
-                    if (resourceUrl != null) {
-                        System.out.println("Resolved system path: " + resourceUrl.getPath());
-                    } else {
-                        System.err.println("Failed to resolve system path for: " + imagePath);
+                    Image image = pieceImages.get(pieceName);
+                    if (image != null) {
+                        ImageView imageView = new ImageView(image);
+                        imageView.setFitHeight(50);
+                        imageView.setFitWidth(50);
+                        square.setGraphic(imageView);
                     }
-
-// Load the image
-                    Image image = new Image(getClass().getResourceAsStream(imagePath));
-                    ImageView imageView = new ImageView(image);
-                    imageView.setFitHeight(50);  // Adjust image size to fit the button
-                    imageView.setFitWidth(50);
-
-
-                    square.setGraphic(imageView);  // Set image as button content
-                } else {
-                    square.setGraphic(null);  // No piece, clear the button graphic
                 }
 
-                // Highlight possible moves if provided
+                // Highlight valid moves
                 if (possibleMoves != null && possibleMoves[row][col]) {
                     square.setStyle("-fx-background-color: lightblue;");
                 } else if ((row + col) % 2 == 0) {
@@ -130,13 +158,10 @@ public class JavaFX_UI extends Application {
                     square.setStyle("-fx-background-color: gray;");
                 }
 
-                // Set the square's ID and add it to the grid
                 String squareID = (char) ('a' + col) + String.valueOf(8 - row);
                 square.setId(squareID);
-
                 gridPane.add(square, col, row);
 
-                // Set button action
                 square.setOnAction(e -> handleSquareClick(squareID));
             }
         }
@@ -182,36 +207,47 @@ public class JavaFX_UI extends Application {
 
     private void handleSquareClick(String squareID) {
         try {
-            ChessPosition clickedPosition = UI.clickChessPosition(squareID);
+            // Simulate console input for the clicked position
+            sendConsoleInput(squareID);
 
-            if (currentState == GameState.SELECT_PIECE) {
-                if (chessMatch.getPiece(clickedPosition) == null ||
-                        chessMatch.getPiece(clickedPosition).getColor() != chessMatch.getCurrentPlayer()) {
-                    System.out.println("Invalid piece selection. Please select a valid piece.");
-                    return;
-                }
+            // Manually trigger the backend to read and process input
+            gameLoop.processNextTurn();
 
-                selectedSource = clickedPosition;
-                currentState = GameState.SELECT_DESTINATION;
-                updateChessBoard(chessMatch.getPieces(), chessMatch.possibleMoves(selectedSource));
-
-            } else if (currentState == GameState.SELECT_DESTINATION) {
-                ChessPiece capturedPiece = chessMatch.performChessMove(selectedSource, clickedPosition);
-                currentState = GameState.SELECT_PIECE;
-
-                updateChessBoard(chessMatch.getPieces());
-
-                // Update footer
-                updateFooter(capturedPiece);
-
-                // Sync Console Board
-                UI.clearScreen();
-                UI.printMatch(chessMatch, new ArrayList<>());
-            }
-        } catch (ChessException | InputMismatchException e) {
-            System.out.println("Error: " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("Error injecting input: " + e.getMessage());
         }
     }
+
+    private void sendConsoleInput(String input) {
+        try {
+            String simulatedInput = input + "\n"; // Add newline to simulate pressing Enter
+            ByteArrayInputStream bais = new ByteArrayInputStream(simulatedInput.getBytes());
+            System.setIn(bais); // Redirect System.in to our simulated input stream
+        } catch (Exception e) {
+            System.out.println("Error simulating console input: " + e.getMessage());
+        }
+    }
+
+    private boolean isValidMove(String squareID) {
+        ChessPosition position = UI.clickChessPosition(squareID);
+
+        int row = position.getRow();
+        int column = position.getColumn() - 'a'; // Convert char column to 0-based index
+
+        System.out.println("Checking move for: Row " + row + ", Column " + column);
+        System.out.println("Valid Moves Length: " + validMoves.length);
+
+        // Ensure valid row and column indices
+        if (row < 0 || row >= validMoves.length || column < 0 || column >= validMoves[row].length) {
+            System.out.println("Out of bounds for validMoves.");
+            return false;
+        }
+
+        boolean valid = validMoves[row][column];
+        System.out.println("Move valid: " + valid);
+        return valid;
+    }
+
 
     private void updateFooter(ChessPiece capturedPiece) {
         Label currentPlayerLabel = footerLabels.get("currentPlayer");
@@ -245,7 +281,9 @@ public class JavaFX_UI extends Application {
     public static void setInitLatch(CountDownLatch latch) {
         initLatch = latch;}
 
-//in start()
+    public void setGameLoop(GameLoop gameLoop) {
+        this.gameLoop = gameLoop; // Store the GameLoop instance
+    }
 
 
 }

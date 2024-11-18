@@ -120,9 +120,17 @@ public class UI {
 
     public static ChessPosition clickChessPosition(String input) {
         try {
-            char column = input.toLowerCase().charAt(0);
-            int row = Integer.parseInt(input.substring(1));
-            return new ChessPosition(column, row);
+            System.out.print(" clickingChessPos " + input);
+
+            char column = input.toLowerCase().charAt(0); // Get column as char ('a' to 'h')
+            int row = Integer.parseInt(input.substring(1)); // Get row as int (1-8)
+
+            // Validate input (redundant but helpful to catch issues early)
+            if (column < 'a' || column > 'h' || row < 1 || row > 8) {
+                throw new InputMismatchException("Error: Invalid chess position " + input);
+            }
+
+            return new ChessPosition(column, row); // Pass as expected by the constructor
         } catch (RuntimeException e) {
             throw new InputMismatchException("Error reading clicked ChessPosition. Valid values are from a1 to h8.");
         }
