@@ -155,7 +155,6 @@ public class JavaFX_UI extends Application {
         }
     }
 
-
     public ChessMatch getChessMatch() {
         return chessMatch;
     }
@@ -213,6 +212,11 @@ public class JavaFX_UI extends Application {
 
     public static void setInputInjector(PrintWriter injector) {
         inputInjector = injector;
+    }
+
+    // New getter method
+    public static PrintWriter getInputInjector() {
+        return inputInjector;
     }
 }
 

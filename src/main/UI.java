@@ -38,7 +38,6 @@ public class UI {
 
     public static ChessPosition readChessPosition(Scanner sc) {
         try {
-
             String s = sc.nextLine();
             char column = s.toLowerCase().charAt(0);
             int row = Integer.parseInt(s.substring(1));
@@ -48,8 +47,6 @@ public class UI {
             throw new InputMismatchException("Error reading ChessPosition. Valid values are from a1 to h8.");
         }
     }
-
-
 
     public static void printMatch(ChessMatch chessMatch, List<ChessPiece> captured) {
         printCapturedPieces(captured);
@@ -68,7 +65,6 @@ public class UI {
 
         printBoard(chessMatch.getPieces()); // Find better to visualize to show the board after the statuses
         System.out.println();
-
     }
     
     public static void printBoard(ChessPiece[][] pieces) {

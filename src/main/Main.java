@@ -127,6 +127,8 @@ public class Main {
         //System.out.println("Injected input enabled: " + allowState);
     }
 
+
+
     private static void clearCurrentInput() {
         if (useInjectedInput) {
             injectedScanner.nextLine();  // Clear piped input
